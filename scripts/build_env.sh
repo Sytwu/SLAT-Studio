@@ -16,7 +16,8 @@ set -o pipefail
 
 CONDA_BASE=/home/cookies/miniconda3
 ENV_PREFIX="${CONDA_BASE}/envs/trellis"
-TRELLIS_DIR=/project2/cookies/slat-studio/third_party/TRELLIS
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # repo root, case-insensitive to dir name
+TRELLIS_DIR="${REPO}/third_party/TRELLIS"
 
 export CUDA_HOME=/usr/local/cuda-11.8          # must match pytorch-cuda=11.8
 export PATH="$CUDA_HOME/bin:$PATH"
