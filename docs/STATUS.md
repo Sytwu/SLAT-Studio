@@ -12,19 +12,39 @@ material alteration, interpolation/morphing** — beyond TRELLIS's text/image→
   `third_party/TRELLIS`; the `slat_studio` package only `import trellis.*`. Custom sampling
   is done by **subclassing** TRELLIS classes — never edit the submodule.
 
-## Status: Phase 0 COMPLETE ✅ (env + smoke + full pipeline verified)
+## Status: Phase 0 ✅ + Phase 1 ✅ (native restyle + SLAT I/O verified)
 
 | Item | State |
 |---|---|
-| Repo + package skeleton (`slat_studio/{bridge,editing,style,morph,io,pipelines,samplers}`) | ✅ stubs only, no algorithms yet |
 | TRELLIS git submodule `third_party/TRELLIS` @ `442aa1e` (+ nested flexicubes) | ✅ unmodified |
 | conda env `trellis` (torch 2.4.0/cu118, xformers, spconv, kaolin, nvdiffrast, diffoctreerast, diff-gaussian) | ✅ built |
 | Import smoke test (`spconv` + `xformers`) | ✅ PASS |
 | Full image→3D capstone (478k splats, render, GLB, visually verified) | ✅ PASS |
-| git commit | ❌ NOT committed yet (waiting on user) |
+| **Phase 1**: `slat_studio.io` SLAT `.npz` save/load | ✅ bit-exact round-trip PASS |
+| **Phase 1**: `slat_studio.pipelines.text_to_slat` (text→3D returning the SLAT) | ✅ |
+| **Phase 1**: `slat_studio.style.restyle` (freeze structure, re-prompt stage-2) | ✅ structure identical, appearance changed, visually verified |
+| transformers 5.11.0 vs text pipeline (CLIP encoder) | ✅ works — NO pin needed |
 | flash-attn | ❌ intentionally skipped; use `ATTN_BACKEND=xformers` |
+| git | ✅ Phase 0 pushed (`origin` = github Sytwu/SLAT-Studio, private) |
 
-Artifacts: `outputs/smoke.glb`, `outputs/smoke_gs.mp4`, `outputs/smoke_frame.png`.
+Phase 0 artifacts: `outputs/smoke.glb`, `outputs/smoke_gs.mp4`, `outputs/smoke_frame.png`.
+Phase 1 artifacts: `outputs/phase1_base.{npz,mp4}`, `outputs/phase1_restyled.mp4`,
+`outputs/phase1_compare.png` (wooden chest → gold/emerald chest, same geometry).
+
+### Phase 1 — how to run / key facts
+- `bash scripts/run_phase1.sh` runs TWO processes: `examples/phase1_generate.py` (generate +
+  cache SLAT + render base) then `examples/phase1_restyle.py` (load cached SLAT + restyle).
+- **Why two processes:** text-xlarge (both flow models + 3 decoders + CLIP) + a full
+  generation + the diff-gaussian renderer's cached buffers accumulate past 24GB if generation
+  and restyle share one process. One generation per process fits; `.cpu()`+`empty_cache`
+  within a process does NOT reliably reclaim it.
+- **Restyle = `sample_slat(new_cond, cached_coords)` + `decode_slat`** — pure composition of
+  TRELLIS public methods; structure (`coords`) is reused exactly, no voxelization round-trip.
+- **GPU-offload gotcha:** `pipeline.device` returns the *first* model's device and
+  `sample_slat` puts its noise there. Never `.cpu()` the first model (`sparse_structure_decoder`)
+  or the restyle noise lands on CPU while `slat_flow_model` is on CUDA → device mismatch.
+- Cheap I/O-only check (no weights): `python scripts/test_slat_io.py`.
+- `scripts/run_full_smoke.py` (image→3D) is the GLB/mesh path; needs the heavy mesh decoder.
 
 ## Environment — how to run (CRITICAL)
 conda env lives at `/home/cookies/miniconda3/envs/trellis` (torch 2.4.0 + cu118).
@@ -55,6 +75,8 @@ Then e.g. `python scripts/smoke_test.py` or `bash scripts/run_full_smoke.sh`.
 - `build_ext_noiso.sh` — rebuild nvdiffrast/diffoctreerast/diff-gaussian (gcc-11, no-build-isolation).
 - `smoke_test.py` — cheap import check (`--full` runs image→3D).
 - `full_smoke.py` + `run_full_smoke.sh` — full image→3D capstone.
+- `test_slat_io.py` — cheap SLAT `.npz` round-trip (synthetic SparseTensor, no weights).
+- `run_phase1.sh` — Phase 1 capstone (generate → cache → restyle), two processes.
 
 ## TRELLIS import surface (confirmed, for future phases)
 - `from trellis.pipelines import TrellisImageTo3DPipeline, TrellisTextTo3DPipeline`
@@ -62,16 +84,16 @@ Then e.g. `python scripts/smoke_test.py` or `bash scripts/run_full_smoke.sh`.
 - encoding bridge will reuse `third_party/TRELLIS/dataset_toolkits/{render,voxelize,extract_feature,encode_latent}.py`.
 - decode/render/export utils: `trellis.utils.{render_utils, postprocessing_utils}`.
 
-## Next: Phase 1 (not started)
-SLAT I/O + native restyle:
-1. `slat_studio/io/` — save/load SLAT as `.npz` (coords {p_i} + feats {z_i}); cache the SLAT
-   produced at generation time (high-fidelity native path).
-2. `slat_studio/style/` — native restyle: freeze structure, re-run stage-2 with a new text prompt.
-   - **RISK:** restyle needs the TEXT pipeline / CLIP text encoder, but env has
-     **transformers 5.11.0** (very new). Verify `TrellisTextTo3DPipeline.from_pretrained(...)`
-     loads; if it breaks, pin transformers to a TRELLIS-era version (~4.46) in the trellis env.
-Then Phase 2 = encoding bridge (external 3DGS → SLAT round-trip fidelity report).
+## Next: Phase 2 — encoding bridge (not started)
+External 3DGS → SLAT, the one genuinely new core component:
+1. `slat_studio/bridge/` — render input 3DGS multiview → DINOv2 features → voxel occupancy
+   (64³) → SLAT VAE encode. Reuse `third_party/TRELLIS/dataset_toolkits/{render,voxelize,
+   extract_feature,encode_latent}.py`.
+2. Deliver a **round-trip fidelity report**: external 3DGS → SLAT → decode → 3DGS, PSNR/LPIPS.
+   If round-trip is poor, downstream edits inherit the error — this is the first experiment.
+
+Then Phase 3 = region editing (RePaint sampler subclass of `FlowEulerSampler` + bbox mask),
+Phase 4 = morphing, Phase 5 (stretch) = true PBR fields / inpainting.
 
 ## Open items to decide with user
-- Do the initial git commit? (Phase 0 scaffold + submodule + scripts.)
-- Proceed to Phase 1 now?
+- Phase 2 (encoding bridge) needs sample external 3DGS assets (.ply) to test on — which?
