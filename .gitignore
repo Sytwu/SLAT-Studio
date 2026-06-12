@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.ipynb_checkpoints/
+
+# envs
+.venv/
+env/
+
+# model weights & large artifacts
+*.ckpt
+*.safetensors
+*.pth
+weights/
+checkpoints/
+
+# outputs
+outputs/
+results/
+*.ply
+*.glb
+*.obj
+*.mp4
+*.npz
+assets/*
+!assets/.gitkeep
+
+# local / editor
+.vscode/
+.DS_Store
+*.log
