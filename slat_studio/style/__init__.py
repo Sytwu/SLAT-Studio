@@ -7,5 +7,9 @@ Scope note:
     - appearance restyle  -> easy, Phase 1 (TRELLIS detail-variation extension).
     - true PBR/material fields -> needs an extra trained decoder (SLAT-Phys-style), Phase 5.
 
-TODO(Phase 1): native-asset restyle. Reference: SLAT-Phys (arXiv:2603.23973).
+Status: native-asset restyle done (Phase 1). True PBR fields still TODO (Phase 5).
+Reference: SLAT-Phys (arXiv:2603.23973).
 """
+from .restyle import restyle
+
+__all__ = ["restyle"]
