@@ -30,7 +30,7 @@ Artifacts: `outputs/smoke.glb`, `outputs/smoke_gs.mp4`, `outputs/smoke_frame.png
 conda env lives at `/home/cookies/miniconda3/envs/trellis` (torch 2.4.0 + cu118).
 ```bash
 export PATH=/home/cookies/miniconda3/envs/trellis/bin:/usr/local/cuda-11.8/bin:$PATH
-export PYTHONPATH=/project2/cookies/slat-studio/third_party/TRELLIS
+export PYTHONPATH=/project2/cookies/SLAT-Studio/third_party/TRELLIS
 export ATTN_BACKEND=xformers
 export SPCONV_ALGO=native
 ```
