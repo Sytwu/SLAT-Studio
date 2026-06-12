@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slat-studio"
+version = "0.0.0"
+description = "Downstream 3D tasks (editing, style/material, morphing) on top of TRELLIS structured latents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+# NOTE: heavy deps (torch, spconv, flash-attn, kaolin, nvdiffrast, diffoctreerast,
+# xformers, mip-gaussian) are provided by the TRELLIS env built via
+# third_party/TRELLIS/setup.sh -- they are intentionally NOT listed here.
+dependencies = [
+    "numpy",
+    "imageio",
+]
+
+[tool.setuptools.packages.find]
+include = ["slat_studio*"]
+exclude = ["third_party*"]
