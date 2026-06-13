@@ -10,6 +10,7 @@ bridge    : encode an existing 3DGS / mesh into SLAT.
 editing   : region / local 3D editing.
 style     : style transfer & material/appearance alteration.
 morph     : SLAT interpolation & morphing.
+inpainting: training-free 3D completion of a holed SLAT (two-stage RePaint).
 io        : load/save SLAT, 3DGS (.ply), mesh, GLB/OBJ.
 pipelines : high-level user-facing entry points.
 samplers  : custom flow samplers (subclasses of TRELLIS samplers).

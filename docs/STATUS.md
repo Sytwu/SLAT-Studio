@@ -12,7 +12,7 @@ material alteration, interpolation/morphing** — beyond TRELLIS's text/image→
   `third_party/TRELLIS`; the `slat_studio` package only `import trellis.*`. Custom sampling
   is done by **subclassing** TRELLIS classes — never edit the submodule.
 
-## Status: Phase 0 ✅ + Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ (morphing verified)
+## Status: Phase 0 ✅ + Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ + Phase 5 ✅ (inpainting verified)
 
 | Item | State |
 |---|---|
@@ -26,6 +26,7 @@ material alteration, interpolation/morphing** — beyond TRELLIS's text/image→
 | **Phase 2**: `slat_studio.bridge` (external 3DGS → SLAT: render→voxelize→DINOv2→VAE encode) | ✅ round-trip PSNR 31.3 dB / SSIM 0.94, structure IoU 0.75 |
 | **Phase 3**: `slat_studio.samplers.RepaintFlowSampler` + `slat_studio.editing.edit_region` (masked region edit) | ✅ out-box latents bit-exact, decode-space change 10.4× concentrated in box |
 | **Phase 4**: `slat_studio.morph.SlatMorpher` (structure union + dissolve schedule) | ✅ exact A/B endpoints, voxel count transitions 32520→12853 across t, decoded sequence verified |
+| **Phase 5**: `slat_studio.samplers.DenseRepaintFlowSampler` + `slat_studio.inpainting.inpaint_slat` (two-stage RePaint completion) | ✅ training-free; hole (7689 vox emptied) regrown 7790 vox, survivor latents bit-exact (max \|Δ\|=0), visually filled |
 | transformers 5.11.0 vs text pipeline (CLIP encoder) | ✅ works — NO pin needed |
 | flash-attn | ❌ intentionally skipped; use `ATTN_BACKEND=xformers` |
 | git | ✅ Phase 0 pushed (`origin` = github Sytwu/SLAT-Studio, private) |
@@ -40,6 +41,8 @@ Phase 3 artifacts: `outputs/phase3_edited.npz`, `outputs/phase3_edit.mp4`, `outp
 Phase 4 artifacts: `outputs/phase4_target.{npz,mp4}` (the teapot target), `outputs/phase4_mid.npz` (t=0.5 SLAT),
 `outputs/phase4_morph_grid.png` (one view per t, chest→teapot), `outputs/phase4_morph.mp4` (turntable through
 each t), `outputs/phase4_report.md`.
+Phase 5 artifacts: `outputs/phase5_completed.{npz,mp4}` (the completed chest), `outputs/phase5_compare.png`
+(source | holed | completed, brightest view — a corner wedge removed then regrown), `outputs/phase5_report.md`.
 
 ### Phase 1 — how to run / key facts
 - `bash scripts/run_phase1.sh` runs TWO processes: `examples/phase1_generate.py` (generate +
@@ -143,6 +146,38 @@ each t), `outputs/phase4_report.md`.
   demo parks every other model and decodes/renders each `t` **one at a time** (same discipline as
   Phase 3 — several live GS decodes OOM a 24GB card).
 
+### Phase 5 — inpainting / completion: how to run / key facts
+- `bash scripts/run_phase5.sh` runs ONE process: `examples/phase5_inpaint.py` loads the chest
+  `phase1_base.npz`, **carves a hole** (a voxel bbox — a corner wedge), completes it, then
+  decodes/renders source | holed | completed. Needs `outputs/phase1_base.npz`.
+- **`slat_studio.inpainting.inpaint_slat(pipeline, source_slat, hole_bbox, prompt, ss_encoder)`**
+  fills a missing region — *both geometry and appearance* — training-free, via **two-stage
+  RePaint**. A hole is missing *structure*, so (unlike Phase 3, which freezes the structure and
+  only repaints latents) we must regrow occupancy first, then paint latents on it:
+  - **Stage 1 (structure):** build the holed 64³ occupancy, encode it with the **sparse-structure
+    VAE encoder** (`ss_enc_conv3d_16l8_fp16` from the image-large ckpt — the text pipeline only
+    loads the SS *decoder*, so we load the encoder separately, à la the Phase-2 bridge) → a known
+    dense 16³ latent. `DenseRepaintFlowSampler` (a dense-tensor sibling of the Phase-3 sampler)
+    regenerates only the hole's latent cells while pinning the rest; the SS decoder yields a
+    **filled occupancy** → new coords (a superset of the survivors). The SS stage has **no latent
+    normalization** (its flow trains directly on encoder outputs), so the known latent is used as-is.
+  - **Stage 2 (latents):** on the new coords, voxels coinciding with *surviving* source voxels keep
+    their **bit-exact** source latent (aligned by the Phase-4 coord-key trick); the regrown voxels
+    are "unknown" and RePaint-sampled by the Phase-3 `RepaintFlowSampler`. Final composite pins the
+    survivor latents back so everything outside the hole is exact.
+- Pure composition of TRELLIS public methods + our two sampler subclasses — submodule untouched.
+- **Latest run:** chest 32520 vox → carve corner wedge (−7689 → 24831 vox) → complete → **32844
+  vox** (kept 24828 survivors, grew 8016; **7790** of them inside the hole). Survivor latent max
+  |Δ| = **0** (bit-exact). `phase5_compare.png`: the bite is cleanly regrown with consistent wood
+  + iron banding.
+- **Honest scope:** stage-1 fill is conditioned on the **text prompt** (not an image of the asset),
+  so it grows *prompt-consistent generic* geometry in the hole — coherent, but not guaranteed to
+  match a specific missing part pixel-for-pixel. Reference for a noise-optimization alternative:
+  InpaintSLat (arXiv:2605.00664); ours is a RePaint masked-sampling adaptation.
+- **Memory:** the inpaint (stage-1 SS flow + stage-2 slat flow + SS enc/dec + CLIP) ≈ a generation
+  footprint, fits one 24GB card; the three GS decodes run **afterward, one at a time**, with the
+  flow models + SS encoder + text encoder parked on CPU (same discipline as Phase 3/4).
+
 ## Environment — how to run (CRITICAL)
 conda env lives at `/home/cookies/miniconda3/envs/trellis` (torch 2.4.0 + cu118).
 ```bash
@@ -177,6 +212,7 @@ Then e.g. `python scripts/smoke_test.py` or `bash scripts/run_full_smoke.sh`.
 - `run_phase2.sh` — Phase 2 encoding-bridge fidelity report (one process; needs phase1_base.npz).
 - `run_phase3.sh` — Phase 3 region-editing demo (one process; needs phase1_base.npz).
 - `run_phase4.sh` — Phase 4 morphing demo (two processes: gen teapot target → morph; needs phase1_base.npz).
+- `run_phase5.sh` — Phase 5 inpainting/completion demo (one process: carve hole → complete → render; needs phase1_base.npz).
 
 ## TRELLIS import surface (confirmed, for future phases)
 - `from trellis.pipelines import TrellisImageTo3DPipeline, TrellisTextTo3DPipeline`
@@ -186,8 +222,18 @@ Then e.g. `python scripts/smoke_test.py` or `bash scripts/run_full_smoke.sh`.
 - `render_utils.render_multiview(sample, resolution, nviews)` → `(colors, extrinsics,
   intrinsics)` with CV cameras that `utils3d.torch.project_cv` consumes directly (used by the bridge).
 - SLAT VAE encoder: `trellis.models.from_pretrained("microsoft/TRELLIS-image-large/ckpts/slat_enc_swin8_B_64l8_fp16")`.
+- Sparse-structure VAE encoder (Phase 5): `trellis.models.from_pretrained("microsoft/TRELLIS-image-large/ckpts/ss_enc_conv3d_16l8_fp16")` — occupancy `[B,1,64³]` → dense latent `[B,8,16³]` (text pipeline ships only the SS *decoder*).
 
-## Next: Phase 5 (stretch) = true PBR fields (SLAT-Phys-style decoder) / inpainting.
+## Next / roadmap
+
+Phase 5 inpainting/completion is **DONE** (see above). Remaining candidates, all **training-free**
+per the user's standing preference (PBR/SLAT-Phys is explicitly **dropped** — it needs a trained
+decoder head):
+- **Phase 5 follow-ups:** RePaint jump-back (`ss_resample`/`slat_resample` > 1) to harmonize the
+  hole boundary; expose `carve_hole` + a non-bbox (arbitrary voxel-mask) hole; complete a *real*
+  partial scan brought in via the Phase-2 bridge.
+- **Phase 4 morphing UPGRADE (MorphAny3D)** — still PAUSED (see below), the highest-value next step
+  if the goal is true shape-warp morphing.
 
 Phase 4 morphing UPGRADE — reference = **MorphAny3D (CVPR 2026, arXiv 2601.00204)**, the real
 SLAT/TRELLIS-native morphing paper (project: https://xiaokunsun.github.io/MorphAny3D.github.io/).
