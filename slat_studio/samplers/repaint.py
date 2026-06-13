@@ -105,6 +105,81 @@ class RepaintFlowSampler(FlowEulerGuidanceIntervalSampler):
         return ret
 
 
+class DenseRepaintFlowSampler(FlowEulerGuidanceIntervalSampler):
+    """RePaint on TRELLIS's *stage-1* sparse-structure flow (dense latent grid).
+
+    The structure model samples a dense latent ``[B, C, r, r, r]`` (``r=16``) which the
+    sparse-structure decoder upsamples to a ``64**3`` occupancy. To *inpaint geometry* we
+    RePaint that dense latent: regenerate the latent cells covering the hole while pinning the
+    known cells to the encoded latent of the surrounding (holed) occupancy.
+
+    Identical RePaint math to :class:`RepaintFlowSampler`, but on plain dense tensors instead
+    of SparseTensors. ``x_0_known`` is the SS encoder output of the known occupancy and ``mask``
+    is a dense ``[1,1,r,r,r]`` float (1 = regenerate, 0 = keep), broadcast over channels.
+    The SS stage has no latent normalization (the flow trains directly on encoder outputs), so
+    ``x_0_known`` is used as-is.
+    """
+
+    def _s(self, t: float) -> float:
+        return self.sigma_min + (1 - self.sigma_min) * t
+
+    def _renoise_known(self, x_0_known, t: float):
+        eps = torch.randn_like(x_0_known)
+        return x_0_known * (1 - t) + eps * self._s(t)
+
+    @torch.no_grad()
+    def sample(
+        self,
+        model,
+        noise,
+        cond,
+        neg_cond,
+        x_0_known,
+        mask,
+        steps: int = 25,
+        rescale_t: float = 3.0,
+        cfg_strength: float = 7.5,
+        cfg_interval: Tuple[float, float] = (0.5, 0.95),
+        resample: int = 1,
+        verbose: bool = True,
+        **kwargs,
+    ):
+        """Masked dense sampling.
+
+        Args:
+            model: the sparse-structure flow model.
+            noise: initial dense noise ``[1,C,r,r,r]``.
+            cond / neg_cond: text conditioning (positive / null).
+            x_0_known: encoded known occupancy latent ``[1,C,r,r,r]`` (SS-latent space).
+            mask: ``[1,1,r,r,r]`` float — 1 inside the hole (regenerate), 0 outside (keep).
+            resample: RePaint jump-back count per step (1 = off; >1 harmonizes the boundary).
+        """
+        keep = 1 - mask
+        inject = dict(neg_cond=neg_cond, cfg_strength=cfg_strength,
+                      cfg_interval=cfg_interval, **kwargs)
+
+        sample = noise
+        t_seq = np.linspace(1, 0, steps + 1)
+        t_seq = rescale_t * t_seq / (1 + (rescale_t - 1) * t_seq)
+        t_pairs = list((t_seq[i], t_seq[i + 1]) for i in range(steps))
+
+        ret = edict({"samples": None, "pred_x_t": [], "pred_x_0": []})
+        for t, t_prev in tqdm(t_pairs, desc="RePaint-SS", disable=not verbose):
+            for u in range(resample):
+                out = self.sample_once(model, sample, t, t_prev, cond, **inject)
+                x_prev_known = self._renoise_known(x_0_known, t_prev)
+                sample = out.pred_x_prev * mask + x_prev_known * keep
+
+                if u < resample - 1 and t_prev > 0:
+                    x0_est = out.pred_x_0 * mask + x_0_known * keep
+                    eps = torch.randn_like(x_0_known)
+                    sample = x0_est * (1 - t) + eps * self._s(t)
+            ret.pred_x_t.append(sample)
+            ret.pred_x_0.append(out.pred_x_0)
+        ret.samples = sample
+        return ret
+
+
 def bbox_mask(coords, bbox, device="cuda"):
     """Per-voxel mask for a voxel-index bounding box (inclusive lower, exclusive upper).
 
