@@ -1,6 +1,6 @@
 # SLAT-Studio — Project Status / Handoff
 
-_Last updated: 2026-06-12. Read this first when resuming._
+_Last updated: 2026-06-13. Read this first when resuming._
 
 ## What this project is
 A repo of **downstream 3D tasks on top of Microsoft TRELLIS** (SLAT = structured latents).
@@ -12,7 +12,7 @@ material alteration, interpolation/morphing** — beyond TRELLIS's text/image→
   `third_party/TRELLIS`; the `slat_studio` package only `import trellis.*`. Custom sampling
   is done by **subclassing** TRELLIS classes — never edit the submodule.
 
-## Status: Phase 0 ✅ + Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ (region editing verified)
+## Status: Phase 0 ✅ + Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ + Phase 4 ✅ (morphing verified)
 
 | Item | State |
 |---|---|
@@ -25,6 +25,7 @@ material alteration, interpolation/morphing** — beyond TRELLIS's text/image→
 | **Phase 1**: `slat_studio.style.restyle` (freeze structure, re-prompt stage-2) | ✅ structure identical, appearance changed, visually verified |
 | **Phase 2**: `slat_studio.bridge` (external 3DGS → SLAT: render→voxelize→DINOv2→VAE encode) | ✅ round-trip PSNR 31.3 dB / SSIM 0.94, structure IoU 0.75 |
 | **Phase 3**: `slat_studio.samplers.RepaintFlowSampler` + `slat_studio.editing.edit_region` (masked region edit) | ✅ out-box latents bit-exact, decode-space change 10.4× concentrated in box |
+| **Phase 4**: `slat_studio.morph.SlatMorpher` (structure union + dissolve schedule) | ✅ exact A/B endpoints, voxel count transitions 32520→12853 across t, decoded sequence verified |
 | transformers 5.11.0 vs text pipeline (CLIP encoder) | ✅ works — NO pin needed |
 | flash-attn | ❌ intentionally skipped; use `ATTN_BACKEND=xformers` |
 | git | ✅ Phase 0 pushed (`origin` = github Sytwu/SLAT-Studio, private) |
@@ -36,6 +37,9 @@ Phase 2 artifacts: `outputs/phase2_bridge.{npz,mp4}`, `outputs/phase2_compare.pn
 (input asset | bridge round-trip, brightest view), `outputs/phase2_report.md` (the fidelity report).
 Phase 3 artifacts: `outputs/phase3_edited.npz`, `outputs/phase3_edit.mp4`, `outputs/phase3_compare.png`
 (source | edited | |diff|, brightest view: wooden chest with a lava-edited top half), `outputs/phase3_report.md`.
+Phase 4 artifacts: `outputs/phase4_target.{npz,mp4}` (the teapot target), `outputs/phase4_mid.npz` (t=0.5 SLAT),
+`outputs/phase4_morph_grid.png` (one view per t, chest→teapot), `outputs/phase4_morph.mp4` (turntable through
+each t), `outputs/phase4_report.md`.
 
 ### Phase 1 — how to run / key facts
 - `bash scripts/run_phase1.sh` runs TWO processes: `examples/phase1_generate.py` (generate +
@@ -106,6 +110,39 @@ Phase 3 artifacts: `outputs/phase3_edited.npz`, `outputs/phase3_edit.mp4`, `outp
   `slat_flow_model`+CLIP after editing and decodes source/edited **one at a time** (two live GS
   decodes OOM a 24GB card).
 
+### Phase 4 — morphing: how to run / key facts
+- `bash scripts/run_phase4.sh` runs TWO processes: `examples/phase4_gen_target.py` (generate +
+  cache the teapot target `outputs/phase4_target.npz`) then `examples/phase4_morph.py` (load the
+  chest source `phase1_base.npz` + the teapot target, morph, decode/render). Needs
+  `outputs/phase1_base.npz`. **Why two processes:** the target generation is a full text→3D pass
+  (same 24GB reason as Phase 1); the morph's 5 GS decodes/renders fit alone but not alongside it.
+- **`slat_studio.morph.SlatMorpher(slat_A, slat_B, seed)`** solves sparse-voxel correspondence by
+  a **structure union + occupancy (dissolve) schedule** — no model needed for the default path:
+  - Union of the two voxel grids → each voxel is *shared* / *A-only* / *B-only*.
+  - **Latents:** shared voxels lerp `(1-t)z_A + t z_B`; A-only/B-only keep their native latent
+    (there is no "empty" latent — an occupied voxel always decodes to content, so presence is
+    controlled by *occupancy*, not by fading a latent to zero).
+  - **Occupancy:** each A-only voxel gets a stable random threshold `τ` and stays occupied while
+    `t<τ`; each B-only voxel appears once `t>τ`; shared always on. As `t`:0→1 this dithers A out
+    and B in. `τ` is fixed across `t` → the same voxel transitions monotonically → temporally
+    coherent (no per-frame flicker). **Endpoints are exact:** `t=0` reproduces A, `t=1` reproduces
+    B (coords + latents), so the morph starts/ends on the real assets.
+  - `.at(t)` → a valid, decodable SLAT; `.sequence(ts)` / `morph_sequence(A,B,ts)` for a list.
+- Pure composition of TRELLIS public methods + `trellis.modules.sparse` — submodule untouched.
+- **Latest run:** chest (32520 vox) → teapot (12853 vox); union 44313, shared **only 1060** (2.4%);
+  per-t counts 32520→27693→22717→17802→12853; endpoints exact (t=0==source, t=1==target, verified
+  coords+latents as sets). Decoded sequence: teapot emerges as the chest dissolves.
+- **Honest limitation (visible in `phase4_morph_grid.png`):** with little spatial overlap the
+  intermediate is a **cross-dissolve** (teapot grows inside the dissolving chest), not a fluid
+  shape-warp; and because Gaussian splats are robust to sparse dropout the chest silhouette
+  persists until late `t`. A true shape interpolation needs spatial **correspondence (optimal
+  transport / nearest-voxel matching, ref MorphAny3D)** so geometry warps rather than fades — the
+  documented next improvement. `morph.harmonize_slat` (optional SDEdit pass reusing the stock
+  sampler's `sample_once`, off by default) cleans up off-manifold shared-voxel latent blends.
+- **Memory:** default morph path needs only the GS decoder + renderer (no flow/text models). The
+  demo parks every other model and decodes/renders each `t` **one at a time** (same discipline as
+  Phase 3 — several live GS decodes OOM a 24GB card).
+
 ## Environment — how to run (CRITICAL)
 conda env lives at `/home/cookies/miniconda3/envs/trellis` (torch 2.4.0 + cu118).
 ```bash
@@ -139,6 +176,7 @@ Then e.g. `python scripts/smoke_test.py` or `bash scripts/run_full_smoke.sh`.
 - `run_phase1.sh` — Phase 1 capstone (generate → cache → restyle), two processes.
 - `run_phase2.sh` — Phase 2 encoding-bridge fidelity report (one process; needs phase1_base.npz).
 - `run_phase3.sh` — Phase 3 region-editing demo (one process; needs phase1_base.npz).
+- `run_phase4.sh` — Phase 4 morphing demo (two processes: gen teapot target → morph; needs phase1_base.npz).
 
 ## TRELLIS import surface (confirmed, for future phases)
 - `from trellis.pipelines import TrellisImageTo3DPipeline, TrellisTextTo3DPipeline`
@@ -149,16 +187,18 @@ Then e.g. `python scripts/smoke_test.py` or `bash scripts/run_full_smoke.sh`.
   intrinsics)` with CV cameras that `utils3d.torch.project_cv` consumes directly (used by the bridge).
 - SLAT VAE encoder: `trellis.models.from_pretrained("microsoft/TRELLIS-image-large/ckpts/slat_enc_swin8_B_64l8_fp16")`.
 
-## Next: Phase 4 — morphing (not started)
-Interpolate between two SLAT assets (ref MorphAny3D). The hard part is sparse-voxel
-correspondence: two SLATs have different `L`, different `{p_i}`. Sketch:
-1. `slat_studio/morph/` — align two structures (union/nearest-voxel correspondence), then
-   interpolate `{p_i}` (occupancy) + `{z_i}` (latents) across `t∈{0,.25,.5,.75,1}`.
-2. Optionally re-run a few stage-2 steps at each `t` to clean up blended latents (like a light
-   RePaint pass — can reuse `RepaintFlowSampler`).
-3. Verify: intermediate frames render as a smooth source→target sequence.
+## Next: Phase 5 (stretch) = true PBR fields (SLAT-Phys-style decoder) / inpainting.
 
-Then Phase 5 (stretch) = true PBR fields (SLAT-Phys-style decoder) / inpainting.
+Phase 4 morphing improvements (optional, deferred — v1 = union+dissolve, see above):
+1. **Spatial correspondence** (the real upgrade): replace the union+dithered-dissolve with
+   nearest-voxel / optimal-transport matching so geometry *warps* source→target instead of
+   cross-dissolving (ref MorphAny3D). Would make low-overlap pairs (chest↔teapot: 2.4% shared)
+   read as a shape morph rather than a fade.
+2. **Harmonize the intermediates**: `morph.harmonize_slat` is implemented (SDEdit, reuses the
+   stock sampler) but off by default — wire it into the demo + measure if it improves the
+   shared-voxel blends. Needs the flow+text models, so the morph would move to a Phase-3-style
+   memory budget (park models, decode one at a time).
+3. Morph a **bridged external `.ply`** against a native asset once a real `.ply` is available.
 
 ## Open items to decide with user
 - Phase 2 used a TRELLIS-native asset as a stand-in external input. Swapping in a **real
