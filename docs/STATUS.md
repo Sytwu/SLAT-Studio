@@ -189,16 +189,32 @@ Then e.g. `python scripts/smoke_test.py` or `bash scripts/run_full_smoke.sh`.
 
 ## Next: Phase 5 (stretch) = true PBR fields (SLAT-Phys-style decoder) / inpainting.
 
-Phase 4 morphing improvements (optional, deferred — v1 = union+dissolve, see above):
-1. **Spatial correspondence** (the real upgrade): replace the union+dithered-dissolve with
-   nearest-voxel / optimal-transport matching so geometry *warps* source→target instead of
-   cross-dissolving (ref MorphAny3D). Would make low-overlap pairs (chest↔teapot: 2.4% shared)
-   read as a shape morph rather than a fade.
-2. **Harmonize the intermediates**: `morph.harmonize_slat` is implemented (SDEdit, reuses the
-   stock sampler) but off by default — wire it into the demo + measure if it improves the
-   shared-voxel blends. Needs the flow+text models, so the morph would move to a Phase-3-style
-   memory budget (park models, decode one at a time).
-3. Morph a **bridged external `.ply`** against a native asset once a real `.ply` is available.
+Phase 4 morphing UPGRADE — reference = **MorphAny3D (CVPR 2026, arXiv 2601.00204)**, the real
+SLAT/TRELLIS-native morphing paper (project: https://xiaokunsun.github.io/MorphAny3D.github.io/).
+**Implementation PAUSED at the user's request (2026-06-13)** after scoping — not started.
+NOTE: MorphAny3D is NOT optimal-transport / voxel-correspondence (an earlier draft of this doc
+mis-described it). Its verified method, training-free, re-generates each of N≈50 frames through
+TRELLIS's two stages, steering interpolation by:
+1. **Noise slerp**: per-frame init latent = spherical interp of source & target init latents
+   (weight α^n); endpoints' init latents from generation seed or DDIM **inversion**.
+2. **Morphing Cross-Attention (MCA)** in the cross-attn layers:
+   `(1-α)·Attn(Q,K_src,V_src) + α·Attn(Q,K_tgt,V_tgt)` — blend the two attention *outputs*
+   (not K/V). Paper uses image conditions; our adaptation uses source/target **text** conditions.
+3. **Temporal-Fused Self-Attention (TFSA)**: self-attn blends in the previous frame (β=0.2).
+4. **Orientation correction**: after SS stage, pick the yaw rotation (0/90/180/270°) with min
+   Chamfer to the previous frame (fixes TRELLIS pose-prior orientation jumps near α≈0.5).
+Feasibility under "never edit the submodule": MCA/TFSA must be injected by **runtime-wrapping
+the loaded flow model's attention modules / forward hooks** (patch the live object, not vendored
+files); needs cached init noise or DDIM inversion for both endpoints. This is a *different,
+heavier* path than the shipped v1 (union+dissolve = a cross-dissolve, no re-generation). Full
+notes in the `morphany3d-reference` memory. Agreed scoping when resuming: pragmatic core first
+(noise-slerp + MCA, text-cond, N≈5), then add TFSA + orientation correction if promising.
+Chosen test pair for the upgrade: **two vases/pots** (similar voxel counts, clean MCA blend).
+
+Also still open (independent of the MorphAny3D upgrade):
+- **Harmonize the v1 intermediates**: `morph.harmonize_slat` is implemented (SDEdit, reuses the
+  stock sampler) but off by default — wire it in + measure if it improves shared-voxel blends.
+- Morph a **bridged external `.ply`** against a native asset once a real `.ply` is available.
 
 ## Open items to decide with user
 - Phase 2 used a TRELLIS-native asset as a stand-in external input. Swapping in a **real
