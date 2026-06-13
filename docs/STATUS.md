@@ -12,7 +12,7 @@ material alteration, interpolation/morphing** — beyond TRELLIS's text/image→
   `third_party/TRELLIS`; the `slat_studio` package only `import trellis.*`. Custom sampling
   is done by **subclassing** TRELLIS classes — never edit the submodule.
 
-## Status: Phase 0 ✅ + Phase 1 ✅ + Phase 2 ✅ (encoding bridge verified)
+## Status: Phase 0 ✅ + Phase 1 ✅ + Phase 2 ✅ + Phase 3 ✅ (region editing verified)
 
 | Item | State |
 |---|---|
@@ -24,6 +24,7 @@ material alteration, interpolation/morphing** — beyond TRELLIS's text/image→
 | **Phase 1**: `slat_studio.pipelines.text_to_slat` (text→3D returning the SLAT) | ✅ |
 | **Phase 1**: `slat_studio.style.restyle` (freeze structure, re-prompt stage-2) | ✅ structure identical, appearance changed, visually verified |
 | **Phase 2**: `slat_studio.bridge` (external 3DGS → SLAT: render→voxelize→DINOv2→VAE encode) | ✅ round-trip PSNR 31.3 dB / SSIM 0.94, structure IoU 0.75 |
+| **Phase 3**: `slat_studio.samplers.RepaintFlowSampler` + `slat_studio.editing.edit_region` (masked region edit) | ✅ out-box latents bit-exact, decode-space change 10.4× concentrated in box |
 | transformers 5.11.0 vs text pipeline (CLIP encoder) | ✅ works — NO pin needed |
 | flash-attn | ❌ intentionally skipped; use `ATTN_BACKEND=xformers` |
 | git | ✅ Phase 0 pushed (`origin` = github Sytwu/SLAT-Studio, private) |
@@ -33,6 +34,8 @@ Phase 1 artifacts: `outputs/phase1_base.{npz,mp4}`, `outputs/phase1_restyled.mp4
 `outputs/phase1_compare.png` (wooden chest → gold/emerald chest, same geometry).
 Phase 2 artifacts: `outputs/phase2_bridge.{npz,mp4}`, `outputs/phase2_compare.png`
 (input asset | bridge round-trip, brightest view), `outputs/phase2_report.md` (the fidelity report).
+Phase 3 artifacts: `outputs/phase3_edited.npz`, `outputs/phase3_edit.mp4`, `outputs/phase3_compare.png`
+(source | edited | |diff|, brightest view: wooden chest with a lava-edited top half), `outputs/phase3_report.md`.
 
 ### Phase 1 — how to run / key facts
 - `bash scripts/run_phase1.sh` runs TWO processes: `examples/phase1_generate.py` (generate +
@@ -75,6 +78,34 @@ Phase 2 artifacts: `outputs/phase2_bridge.{npz,mp4}`, `outputs/phase2_compare.pn
 - **Bridge over-counts voxels** (42k vs 32k native): Gaussian per-voxel offsets push some means
   into neighboring cells, so IoU caps ~0.75. A density/coverage threshold could tighten it later.
 
+### Phase 3 — region editing: how to run / key facts
+- `bash scripts/run_phase3.sh` (ONE process) → `examples/phase3_edit.py`. Needs
+  `outputs/phase1_base.npz`. Latest run: structure preserved (coords identical), **out-of-box
+  latents bit-exact** (max |Δ|=0.0), in-box latents changed (mean |Δ|=4.17), and per-Gaussian
+  |Δcolor| **10.4× higher in-box than out-box** (wooden chest → lava-textured top half).
+- **Sampler = `slat_studio.samplers.RepaintFlowSampler`** — subclass of TRELLIS's
+  `FlowEulerGuidanceIntervalSampler` (so CFG + guidance-interval are reused verbatim). Overrides
+  only `sample`: at each Euler step the unknown (in-box) voxels follow the model while the known
+  (out-box) voxels are re-noised from the source x_0 — RePaint adapted to flow matching
+  (`x_t = (1-t)·x_0 + (σ_min+(1-σ_min)t)·ε`). Optional `resample>1` does RePaint jump-back to
+  harmonize the boundary (default 1 = off). Nothing in the submodule is edited.
+- **Entry point = `slat_studio.editing.edit_region(pipe, source_slat, bbox, prompt)`** —
+  normalizes source latents with `pipe.slat_normalization`, builds noise on the SAME coords via
+  `.replace()` (so the per-voxel mask stays row-aligned), runs the sampler, denormalizes, then
+  **hard-composites the source latents back outside the mask** → out-of-box preservation is
+  bit-exact (not just approximate). `bbox` is voxel indices `(x0,y0,z0,x1,y1,z1)`; use
+  `editing.normalized_to_voxel_bbox` for a box in `[-0.5,0.5]`.
+- **Per-voxel masking trick:** SparseTensor `*` with an `[N,1]` tensor — the `[1,C]` batch-
+  broadcast path raises and falls back to a plain elementwise mul → per-voxel gating over the 8
+  channels. `.replace(feats)` keeps coords/order, so mask/known/noise/x_t all stay aligned.
+- **Localization is not perfect outside the box** (out-box |Δcolor|=0.032, not 0): the GS decoder
+  is a *global* sparse transformer, so freezing the out-box latents exactly still lets a little
+  appearance change bleed across voxel attention. The latent freeze is exact; the *decoded* edit
+  is concentrated (10.4×) but not perfectly contained — report both honestly.
+- **Memory:** edit = one stage-2 pass + GS decoder + CLIP ≈ restyle footprint. The demo parks
+  `slat_flow_model`+CLIP after editing and decodes source/edited **one at a time** (two live GS
+  decodes OOM a 24GB card).
+
 ## Environment — how to run (CRITICAL)
 conda env lives at `/home/cookies/miniconda3/envs/trellis` (torch 2.4.0 + cu118).
 ```bash
@@ -107,6 +138,7 @@ Then e.g. `python scripts/smoke_test.py` or `bash scripts/run_full_smoke.sh`.
 - `test_slat_io.py` — cheap SLAT `.npz` round-trip (synthetic SparseTensor, no weights).
 - `run_phase1.sh` — Phase 1 capstone (generate → cache → restyle), two processes.
 - `run_phase2.sh` — Phase 2 encoding-bridge fidelity report (one process; needs phase1_base.npz).
+- `run_phase3.sh` — Phase 3 region-editing demo (one process; needs phase1_base.npz).
 
 ## TRELLIS import surface (confirmed, for future phases)
 - `from trellis.pipelines import TrellisImageTo3DPipeline, TrellisTextTo3DPipeline`
@@ -117,16 +149,16 @@ Then e.g. `python scripts/smoke_test.py` or `bash scripts/run_full_smoke.sh`.
   intrinsics)` with CV cameras that `utils3d.torch.project_cv` consumes directly (used by the bridge).
 - SLAT VAE encoder: `trellis.models.from_pretrained("microsoft/TRELLIS-image-large/ckpts/slat_enc_swin8_B_64l8_fp16")`.
 
-## Next: Phase 3 — region editing (not started)
-RePaint-style masked two-stage sampling in SLAT space:
-1. `slat_studio/samplers/` — subclass `trellis.pipelines.samplers.FlowEulerSampler` to inject a
-   bbox/voxel mask each step (keep known latents outside the mask, resample inside). Ref
-   Easy3E / InpaintSLat.
-2. `slat_studio/editing/` — high-level region-edit entry point (source SLAT + bbox + prompt).
-3. Verify: edited bbox changes; outside-bbox voxels/latents unchanged (diff ≈ 0).
+## Next: Phase 4 — morphing (not started)
+Interpolate between two SLAT assets (ref MorphAny3D). The hard part is sparse-voxel
+correspondence: two SLATs have different `L`, different `{p_i}`. Sketch:
+1. `slat_studio/morph/` — align two structures (union/nearest-voxel correspondence), then
+   interpolate `{p_i}` (occupancy) + `{z_i}` (latents) across `t∈{0,.25,.5,.75,1}`.
+2. Optionally re-run a few stage-2 steps at each `t` to clean up blended latents (like a light
+   RePaint pass — can reuse `RepaintFlowSampler`).
+3. Verify: intermediate frames render as a smooth source→target sequence.
 
-Then Phase 4 = morphing (SLAT structure alignment + interpolation, ref MorphAny3D),
-Phase 5 (stretch) = true PBR fields (SLAT-Phys-style decoder) / inpainting.
+Then Phase 5 (stretch) = true PBR fields (SLAT-Phys-style decoder) / inpainting.
 
 ## Open items to decide with user
 - Phase 2 used a TRELLIS-native asset as a stand-in external input. Swapping in a **real
