@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  
+  <!-- Primary Meta Tags -->
+  <meta name="title" content="SLAT-Studio: Training-Free Downstream 3D Tasks on Structured Latents">
+  <meta name="description" content="SLAT-Studio turns an existing 3D asset plus a text prompt into edited 3D: region editing, style/material transfer, morphing, and inpainting — all training-free on top of TRELLIS Structured LATents.">
+  <meta name="keywords" content="3D editing, structured latents, SLAT, TRELLIS, 3D Gaussian Splatting, flow matching, RePaint, text-to-3D, style transfer, 3D inpainting, morphing">
+  <!-- TODO: List all authors -->
+  <meta name="author" content="FIRST_AUTHOR_NAME, SECOND_AUTHOR_NAME">
+  <meta name="robots" content="index, follow">
+  <meta name="language" content="English">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="article">
+  <!-- TODO: Replace with your institution or lab name -->
+  <meta property="og:site_name" content="INSTITUTION_OR_LAB_NAME">
+  <meta property="og:title" content="SLAT-Studio: Training-Free Downstream 3D Tasks on Structured Latents">
+  <meta property="og:description" content="Region editing, style/material transfer, morphing, and inpainting on existing 3D assets — training-free, on top of TRELLIS Structured LATents.">
+  <!-- TODO: Replace with your actual website URL -->
+  <meta property="og:url" content="https://YOUR_DOMAIN.com/YOUR_PROJECT_PAGE">
+  <meta property="og:image" content="static/images/teaser.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="SLAT-Studio teaser: one wooden chest restyled, edited, and inpainted">
+  <meta property="article:published_time" content="2026-06-14T00:00:00.000Z">
+  <!-- TODO: Replace with first author -->
+  <meta property="article:author" content="FIRST_AUTHOR_NAME">
+  <meta property="article:section" content="Research">
+  <meta property="article:tag" content="3D editing">
+  <meta property="article:tag" content="Structured Latents">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <!-- TODO: Replace with your lab/institution Twitter handle -->
+  <meta name="twitter:site" content="@YOUR_TWITTER_HANDLE">
+  <!-- TODO: Replace with first author's Twitter handle -->
+  <meta name="twitter:creator" content="@AUTHOR_TWITTER_HANDLE">
+  <meta name="twitter:title" content="SLAT-Studio: Training-Free Downstream 3D Tasks on Structured Latents">
+  <meta name="twitter:description" content="Region editing, style/material transfer, morphing, and inpainting on existing 3D assets — training-free, on top of TRELLIS Structured LATents.">
+  <meta name="twitter:image" content="static/images/teaser.png">
+  <meta name="twitter:image:alt" content="SLAT-Studio teaser">
+
+  <!-- Academic/Research Specific -->
+  <meta name="citation_title" content="SLAT-Studio: Training-Free Downstream 3D Tasks on Structured Latents">
+  <!-- TODO: Replace with author names -->
+  <meta name="citation_author" content="FIRST_AUTHOR_LAST, FIRST_AUTHOR_FIRST">
+  <meta name="citation_publication_date" content="2026">
+  
+  <!-- Additional SEO -->
+  <meta name="theme-color" content="#2563eb">
+  <meta name="msapplication-TileColor" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  
+  <!-- Preconnect for performance -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://ajax.googleapis.com">
+  <link rel="preconnect" href="https://documentcloud.adobe.com">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+
+
+  <title>SLAT-Studio: Training-Free Downstream 3D Tasks on Structured Latents</title>
+  
+  <!-- Favicon and App Icons -->
+  <link rel="icon" type="image/x-icon" href="static/images/favicon.ico">
+  <link rel="apple-touch-icon" href="static/images/favicon.ico">
+  
+  <!-- Critical CSS - Load synchronously -->
+  <link rel="stylesheet" href="static/css/bulma.min.css">
+  <link rel="stylesheet" href="static/css/index.css">
+  
+  <!-- Non-critical CSS - Load asynchronously -->
+  <link rel="preload" href="static/css/bulma-carousel.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="static/css/bulma-slider.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="static/css/fontawesome.all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  
+  <!-- Fallback for browsers that don't support preload -->
+  <noscript>
+    <link rel="stylesheet" href="static/css/bulma-carousel.min.css">
+    <link rel="stylesheet" href="static/css/bulma-slider.min.css">
+    <link rel="stylesheet" href="static/css/fontawesome.all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  </noscript>
+  
+  <!-- Fonts - Optimized loading -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Defer non-critical JavaScript -->
+  <script defer src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script defer src="https://documentcloud.adobe.com/view-sdk/main.js"></script>
+  <script defer src="static/js/fontawesome.all.min.js"></script>
+  <script defer src="static/js/bulma-carousel.min.js"></script>
+  <script defer src="static/js/bulma-slider.min.js"></script>
+  <script defer src="static/js/index.js"></script>
+  
+  <!-- Structured Data for Academic Papers -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    "name": "SLAT-Studio",
+    "headline": "SLAT-Studio: Training-Free Downstream 3D Tasks on Structured Latents",
+    "description": "A toolkit for training-free downstream 3D editing on top of TRELLIS Structured LATents (SLAT): region editing, style/material transfer, morphing, and inpainting on existing 3D assets.",
+    "codeRepository": "https://github.com/Sytwu/SLAT-Studio",
+    "programmingLanguage": "Python",
+    "image": "static/images/teaser.png",
+    "keywords": ["3D editing", "Structured Latents", "SLAT", "TRELLIS", "3D Gaussian Splatting", "flow matching", "RePaint", "computer vision"],
+    "isAccessibleForFree": true,
+    "license": "https://creativecommons.org/licenses/by-sa/4.0/"
+  }
+  </script>
+  
+  <!-- Website/Organization Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "INSTITUTION_OR_LAB_NAME",
+    "url": "https://YOUR_INSTITUTION_WEBSITE.com",
+    "logo": "https://YOUR_DOMAIN.com/static/images/favicon.ico",
+    "sameAs": [
+      "https://github.com/Sytwu/SLAT-Studio"
+    ]
+  }
+  </script>
+</head>
+<body>
+
+
+  <!-- Scroll to Top Button -->
+  <button class="scroll-to-top" onclick="scrollToTop()" title="Scroll to top" aria-label="Scroll to top">
+    <i class="fas fa-chevron-up"></i>
+  </button>
+
+  <main id="main-content">
+  <section class="hero">
+    <div class="hero-body" style="padding-bottom:1rem;">
+      <div class="container is-max-desktop">
+        <div class="columns is-centered">
+          <div class="column has-text-centered">
+            <h1 class="title is-1 publication-title">SLAT-Studio</h1>
+            <h2 class="title is-4 publication-title" style="margin-top:-0.5rem;">Training-Free Downstream 3D Tasks on Structured Latents</h2>
+            <div class="is-size-5 publication-authors">
+              <!-- TODO: Replace with your author names and their personal links -->
+              <span class="author-block">
+                <a href="FIRST AUTHOR PERSONAL LINK" target="_blank">First Author</a>,</span>
+                <span class="author-block">
+                  <a href="SECOND AUTHOR PERSONAL LINK" target="_blank">Second Author</a>
+                </span>
+                  </div>
+
+                  <div class="is-size-5 publication-authors">
+                    <!-- TODO: Replace with your institution / venue -->
+                    <span class="author-block">Institution Name<br>Project report &middot; 2026</span>
+                  </div>
+
+                  <div class="column has-text-centered">
+                    <div class="publication-links">
+                  <!-- Code (GitHub) -->
+                  <span class="link-block">
+                    <a href="https://github.com/Sytwu/SLAT-Studio" target="_blank"
+                    class="external-link button is-normal is-rounded is-dark">
+                    <span class="icon">
+                      <i class="fab fa-github"></i>
+                    </span>
+                    <span>Code</span>
+                  </a>
+                </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- Teaser -->
+<section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body" style="padding-top:0;">
+      <video autoplay controls muted loop playsinline preload="metadata" style="width:100%;border-radius:8px;">
+        <source src="static/videos/teaser.mp4" type="video/mp4">
+      </video>
+      <h2 class="subtitle has-text-centered">
+        <strong>One input asset, many downstream edits.</strong> From an existing 3D asset and a text prompt,
+        SLAT-Studio restyles, edits, and inpaints — all <em>training-free</em>, directly in TRELLIS's
+        Structured&nbsp;LATent (SLAT) space.
+      </h2>
+    </div>
+  </div>
+</section>
+<!-- End teaser -->
+
+<!-- Paper abstract -->
+<section class="section hero is-light">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Abstract</h2>
+        <div class="content has-text-justified">
+          <p>
+            <strong>SLAT-Studio</strong> brings <strong>downstream 3D editing</strong> to
+            <a href="https://github.com/microsoft/TRELLIS" target="_blank">Microsoft&nbsp;TRELLIS</a> and its
+            <strong>Structured&nbsp;LATent (SLAT)</strong> representation. Given an <em>existing</em> 3D asset (3DGS or mesh)
+            and a text prompt, it performs four tasks: <strong>style and material transfer</strong>,
+            <strong>region editing</strong>, <strong>inpainting and completion</strong>, and
+            <strong>interpolation and morphing</strong>. Every task is entirely <strong>training-free</strong>, built by
+            composing TRELLIS's public APIs and subclassing its flow-matching samplers. The vendored TRELLIS submodule is
+            never modified, and an interactive Gradio app exposes every task over a single resident pipeline.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End paper abstract -->
+
+
+<!-- Method -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full">
+        <h2 class="title is-3 has-text-centered">Method</h2>
+        <div class="content has-text-justified">
+          <p>
+            TRELLIS represents a 3D asset as a <strong>SLAT</strong>: active voxels on a 64<sup>3</sup> grid, each carrying
+            an 8-channel latent. A two-stage flow-matching process — a <em>sparse-structure</em> stage for the voxels, then
+            a <em>SLAT</em> stage for their latents — is decoded to Gaussians / mesh / radiance field. SLAT-Studio works at
+            this latent level, reusing the frozen models and only changing <em>how</em> they are sampled.
+          </p>
+          <figure class="image" style="max-width:900px;margin:1.5rem auto;">
+            <img src="static/images/method_pipeline.png" alt="TRELLIS two-stage SLAT pipeline" loading="lazy"/>
+            <figcaption class="has-text-centered is-size-7" style="margin-top:0.5rem;">
+              The TRELLIS Structured&nbsp;LATent pipeline SLAT-Studio builds on (figure from
+              <a href="https://github.com/microsoft/TRELLIS" target="_blank">Microsoft&nbsp;TRELLIS</a>).
+            </figcaption>
+          </figure>
+          <ul>
+            <li><strong>Encoding bridge.</strong> Lifts an external 3DGS into SLAT space — multiview render → DINOv2
+              tokens → voxelize → frozen VAE encode. Round-trip: <strong>31.3&nbsp;dB PSNR / 0.94 SSIM</strong>,
+              IoU&nbsp;0.75.</li>
+            <li><strong>Style / material transfer.</strong> Freeze the voxel coordinates and re-run only the SLAT stage
+              under a new prompt: geometry is preserved, appearance changes.</li>
+            <li><strong>Editing &amp; completion (RePaint).</strong> A RePaint flow sampler re-noises known voxels from the
+              source at every step while unknown voxels follow the model; a hard composite keeps the rest
+              <strong>bit-exact</strong>. Completion adds a stage that regrows missing <em>geometry</em> first.</li>
+            <li><strong>Morphing.</strong> Blends two assets in SLAT space — a fixed-structure appearance morph and a
+              structure-union + occupancy-dissolve schedule, both with exact endpoints.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End method -->
+
+
+<!-- Style & material transfer -->
+<section class="section hero is-light">
+  <div class="container is-max-desktop content">
+    <h2 class="title is-3 has-text-centered">Style &amp; material transfer</h2>
+    <p class="has-text-justified">
+      Freeze the structure and re-run only the SLAT stage under a new prompt: geometry is identical, only the material
+      changes. A <em>rustic wooden chest</em> is restyled into <em>solid gold</em>, shown as turntables of the decoded
+      Gaussian splat.
+    </p>
+    <div class="columns is-centered has-text-centered">
+      <div class="column">
+        <video autoplay controls muted loop playsinline preload="metadata" style="width:100%;border-radius:8px;">
+          <source src="static/videos/turntable_source.mp4" type="video/mp4">
+        </video>
+        <p class="is-size-6"><strong>Input</strong> — &ldquo;rustic wooden treasure chest with iron bands&rdquo;</p>
+      </div>
+      <div class="column">
+        <video autoplay controls muted loop playsinline preload="metadata" style="width:100%;border-radius:8px;">
+          <source src="static/videos/turntable_restyle.mp4" type="video/mp4">
+        </video>
+        <p class="is-size-6"><strong>Restyled</strong> — &ldquo;treasure chest made of solid gold&rdquo;</p>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End style transfer -->
+
+<!-- Region editing -->
+<section class="section">
+  <div class="container is-max-desktop content">
+    <h2 class="title is-3 has-text-centered">Region editing</h2>
+    <p class="has-text-justified">
+      A selected region (tinted green) is repainted under an edit prompt while voxels outside are re-noised from the source
+      and composited back <strong>bit-exact</strong>. Here one half of the chest becomes &ldquo;molten glowing lava&rdquo;
+      while the other half keeps its original wood, so the boundary is visible head-on. The latent freeze outside the box is
+      exact; the <em>decoded</em> change is concentrated (&times;10.4 stronger inside the box) but not perfectly contained,
+      which we report honestly.
+    </p>
+    <video autoplay controls muted loop playsinline preload="metadata" style="width:100%;border-radius:8px;">
+      <source src="static/videos/edit.mp4" type="video/mp4">
+    </video>
+  </div>
+</section>
+<!-- End region editing -->
+
+<!-- Inpainting / completion -->
+<section class="section hero is-light">
+  <div class="container is-max-desktop content">
+    <h2 class="title is-3 has-text-centered">Inpainting / completion</h2>
+    <p class="has-text-justified">
+      Unlike editing, completion regrows missing <em>geometry</em>. We carve a region out, then run a two-stage RePaint:
+      stage&nbsp;1 regrows occupancy with the sparse-structure flow, stage&nbsp;2 paints latents on the new voxels while
+      survivors keep their bit-exact source latents. The bite is regrown with consistent wood and iron banding.
+    </p>
+    <video autoplay controls muted loop playsinline preload="metadata" style="width:100%;border-radius:8px;">
+      <source src="static/videos/inpaint.mp4" type="video/mp4">
+    </video>
+  </div>
+</section>
+<!-- End inpainting -->
+
+<!-- Interpolation & morphing -->
+<section class="section">
+  <div class="container is-max-desktop content">
+    <h2 class="title is-3 has-text-centered">Interpolation &amp; morphing</h2>
+    <p class="has-text-justified">
+      Two assets are blended in SLAT space. The fixed-structure appearance morph aligns a target onto the source geometry
+      and interpolates latents, giving a coherent transition with <strong>exact endpoints</strong> (<em>t</em>&nbsp;=&nbsp;0
+      source, <em>t</em>&nbsp;=&nbsp;1 target). A structure-union + occupancy-dissolve schedule supports cross-shape morphs.
+    </p>
+    <video autoplay controls muted loop playsinline preload="metadata" style="display:block;margin:0 auto;max-width:420px;width:100%;border-radius:8px;">
+      <source src="static/videos/morph.mp4" type="video/mp4">
+    </video>
+  </div>
+</section>
+<!-- End interpolation & morphing -->
+
+
+
+<!--BibTex citation -->
+  <section class="section" id="BibTeX">
+    <div class="container is-max-desktop content">
+      <div class="bibtex-header">
+        <h2 class="title">BibTeX</h2>
+        <button class="copy-bibtex-btn" onclick="copyBibTeX()" title="Copy BibTeX to clipboard">
+          <i class="fas fa-copy"></i>
+          <span class="copy-text">Copy</span>
+        </button>
+      </div>
+      <pre id="bibtex-code"><code>@software{slatstudio2026,
+  title  = {SLAT-Studio: Training-Free Downstream 3D Tasks on Structured Latents},
+  author = {First Author and Second Author},
+  year   = {2026},
+  note   = {Built on Microsoft TRELLIS Structured LATents (SLAT)},
+  url    = {https://github.com/Sytwu/SLAT-Studio}
+}</code></pre>
+    </div>
+</section>
+<!--End BibTex citation -->
+
+
+  <footer class="footer">
+  <div class="container">
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content">
+
+          <p>
+            SLAT-Studio is built on top of <a href="https://github.com/microsoft/TRELLIS" target="_blank">Microsoft TRELLIS</a>,
+            which is vendored unmodified; all downstream task logic only imports and subclasses its public APIs.
+          </p>
+          <p>
+            This page was built using the <a href="https://github.com/eliahuhorwitz/Academic-project-page-template" target="_blank">Academic Project Page Template</a> which was adopted from the <a href="https://nerfies.github.io" target="_blank">Nerfies</a> project page.
+            You are free to borrow the source code of this website, we just ask that you link back to this page in the footer. <br> This website is licensed under a <a rel="license"  href="http://creativecommons.org/licenses/by-sa/4.0/" target="_blank">Creative
+            Commons Attribution-ShareAlike 4.0 International License</a>.
+          </p>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- Statcounter tracking code -->
+  
+<!-- You can add a tracker to track page visits by creating an account at statcounter.com -->
+
+    <!-- End of Statcounter Code -->
+
+  </body>
+  </html>

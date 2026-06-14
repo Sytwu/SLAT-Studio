@@ -29,6 +29,9 @@ results/
 assets/*
 !assets/.gitkeep
 
+# project page is a deliverable: keep its rendered media (overrides the *.mp4/*.png rules above)
+!project-page/static/videos/*.mp4
+
 # local / editor
 .vscode/
 .DS_Store
