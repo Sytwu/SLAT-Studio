@@ -11,5 +11,8 @@ export ATTN_BACKEND=xformers
 export SPCONV_ALGO=native
 export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True          # reduce fragmentation on 24GB cards
+# Default /tmp/gradio is owned by another user on this shared box -> use a per-user dir we own.
+export GRADIO_TEMP_DIR="${TMPDIR:-/tmp}/gradio-${USER:-$(id -un)}"
+mkdir -p "${GRADIO_TEMP_DIR}"
 
 python "${REPO}/app.py"

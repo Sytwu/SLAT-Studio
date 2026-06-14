@@ -1,6 +1,17 @@
 # SLAT-Studio — Project Status / Handoff
 
-_Last updated: 2026-06-13. Read this first when resuming._
+_Last updated: 2026-06-14. Read this first when resuming._
+
+> **App UI work committed (2026-06-14).** The Gradio app (`app.py`, `scripts/run_app.sh`) now
+> includes the interactive-splat viewers + a **2nd app UI pass** (accordions removed, region tinted
+> on the real splat, Inpaint carved↔inpainted toggle, Morph = fixed-structure appearance morph) +
+> a **3rd UI pass**: **progress spinner restored** (`show_progress="full"`), **Region/Hole pickers
+> moved to the left column**, **presets fixed to TRELLIS's +Z-up frame** (top/bottom slice **Z** —
+> was wrongly Y), and **Morph grid/render-at-t replaced by a discrete Frame-slider scrubber**. The
+> Inpaint **hole presets are now ~1/4 of the asset** (each axis span ~0.63) so the regrowth is
+> clearly visible, while still anchored to one local region so the survivors line up — see the
+> **"Gradio app"** section. **NB: Gradio does not hot-reload — restart the app
+> (`bash scripts/run_app.sh`) to pick up edits.**
 
 ## What this project is
 A repo of **downstream 3D tasks on top of Microsoft TRELLIS** (SLAT = structured latents).
@@ -31,7 +42,8 @@ material alteration, interpolation/morphing** — beyond TRELLIS's text/image→
 | flash-attn | ❌ intentionally skipped; use `ATTN_BACKEND=xformers` |
 | git | ✅ Phase 0 pushed (`origin` = github Sytwu/SLAT-Studio, private) |
 
-Phase 0 artifacts: `outputs/smoke.glb`, `outputs/smoke_gs.mp4`, `outputs/smoke_frame.png`.
+Phase 0 artifacts: `outputs/smoke_gs.mp4`, `outputs/smoke_frame.png` (and `outputs/smoke.glb` —
+**deleted 2026-06-14 by mistake**; gitignored/never committed, regenerate with `bash scripts/run_full_smoke.sh`).
 Phase 1 artifacts: `outputs/phase1_base.{npz,mp4}`, `outputs/phase1_restyled.mp4`,
 `outputs/phase1_compare.png` (wooden chest → gold/emerald chest, same geometry).
 Phase 2 artifacts: `outputs/phase2_bridge.{npz,mp4}`, `outputs/phase2_compare.png`
@@ -178,6 +190,103 @@ Phase 5 artifacts: `outputs/phase5_completed.{npz,mp4}` (the completed chest), `
   footprint, fits one 24GB card; the three GS decodes run **afterward, one at a time**, with the
   flow models + SS encoder + text encoder parked on CPU (same discipline as Phase 3/4).
 
+## Gradio app (`app.py`) — interactive front-end
+Run: **`bash scripts/run_app.sh`** (it's a shell script — running it with `python` raises
+`SyntaxError`) → http://localhost:7860; the pipeline lazy-loads on first tab use. The launch
+script sets PATH/PYTHONPATH + `ATTN_BACKEND=xformers` + `SPCONV_ALGO=native` +
+`CUDA_VISIBLE_DEVICES=1` + `GRADIO_TEMP_DIR=/tmp/gradio-$USER` (the default `/tmp/gradio` is owned
+by another user on this shared box → `PermissionError` without the override).
+
+One tab per task — **Generate / Restyle / Edit / Morph / Inpaint / Bridge** — all on one resident
+`TrellisTextTo3DPipeline` (mesh/RF decoders parked on CPU). SLATs are exchanged through a **file
+library**: each tab saves `outputs/<name>.npz`; other tabs pick it from a dropdown; the top
+**🔄 Refresh** button (plus an auto-`.then` after Generate/Bridge) repopulates every dropdown.
+
+- **Results are interactive gaussian splats, not video.** Each result is decoded to gaussians and
+  saved `outputs/<stem>.ply` (via `Gaussian.save_ply`), shown in `gr.Model3D(display_mode="solid")`
+  — drag to rotate. The `.ply` carries the splat fields (`f_dc/opacity/scale/rot`). **The full
+  splat is saved, NOT pruned** (~531k gaussians, `.ply` ~80 MB). An opacity-prune to 250k was
+  implemented then **reverted at user request (2026-06-14, "還是不要 prune gaussian 好了")** —
+  `prune_gaussians`, the `SPLAT_MAX_GAUSSIANS`/`SPLAT_MIN_OPACITY` constants and the `· {N}k splats`
+  message tag are all gone. If the in-browser splat feels heavy, re-introducing a cap is the lever.
+- **Edit & Inpaint use a 3-column layout**: left = inputs (source/**region|hole picker**/prompt/seed/
+  save/run), **middle = the preview ON THE ASSET**, right = result. (3rd pass 2026-06-14 moved the
+  picker dropdown out of the middle into the left column.) Picking a preset from the dropdown
+  (opens on a `SELECT_REGION`/`SELECT_HOLE` = "— Select … —" sentinel) auto-tints that region on the
+  **real gaussian splat** of the source — 🟩 green = Edit will-change (`select_edit_region`), 🟥 red =
+  Inpaint carve+regrow (`select_inpaint_region`). Helper `region_tinted_ply` decodes the source once
+  (cached on CPU in `_PREVIEW_GS`, keyed by the `.npz` mtime), blends the in-bbox gaussians' colour
+  toward the tint (`rgb = 0.5 + SH_C0·f_dc`, `TINT_ALPHA=0.55`), and `save_ply`s a `.ply` (the CPU
+  `save_ply` needs `aabb` + the `*_bias` buffers moved to cpu too). Preview and result are now both
+  `.ply` splats in the same frame, so the old glb-vs-splat "x/y/z look off" mismatch is **gone**. The
+  6 bbox `gr.Number`s stay **hidden** (`bbox_row(visible=False)`) only to carry the chosen box into the
+  run. **Inpaint's result viewer has a carved↔inpainted toggle** (`gr.Radio` `INPAINT_BEFORE`/
+  `INPAINT_AFTER` + two `gr.State` paths; `do_inpaint` also decodes the carved `holed` SLAT →
+  `<stem>_carved.ply`; `swap_inpaint_view` flips the viewer) so you can compare carve vs fill.
+- **2026-06-14 (2nd UI pass — user's 6-point list), supersedes the earlier accordion/cube-preview pass:**
+  (a) **all `⚙ Options` accordions removed** — seed/resample/render-views are inline (accordion-for-one-
+  field was over-engineering); (b) status messages no longer print elapsed time — user "不需要顯示處理時間"
+  (this meant the **message text**, not the spinner; `show_progress` was set `"minimal"` here, then
+  **reverted to `"full"` in the 3rd pass** — minimal had shown a static icon, killing the animation); (c) the abstract
+  red/green voxel-cube preview (`region_preview_glb`/`_cube_mesh`/`preview_region`/`select_region`), the
+  **Inspect extent** button (`do_inspect`), and `import trimesh` were all **deleted** (replaced by the
+  tinted-splat preview above); (d) **Morph rebuilt** (next bullet). Tabs keep `gr.Row(equal_height=True)`
+  so column bottoms align.
+- **Morph = fixed-structure APPEARANCE morph** (replaced the v1 union/dissolve, which the user found weak):
+  source + **target prompt** → `_get_appearance_morpher` `restyle`s the source (re-runs stage-2 on the **same
+  coords**, **cached** ~30-60 s) → `SlatMorpher(src, target)` all-shared → `.at(t)` is a pure latent lerp on a
+  fixed geometry (**t=0 source, t=1 restyle**, geometry never moves). **3rd-pass UX (2026-06-14):** the grid
+  image and the continuous "Render at t" save-to-library are **gone**; instead **`do_morph_build`** renders **N
+  discrete frames** (decodes each `.at(t)` → its own `outputs/<src>_morph_f{i}.ply`) and the right column has a
+  **discrete `m_frame` slider** that **`show_morph_frame`** uses to scrub the precomputed frames *instantly* (no
+  recompute; the slider label shows the current `t`). N comes from the left **`m_steps`** slider, renamed
+  **"Frames (discrete t steps)"**. Morph no longer writes `.npz` to the library (frames are view-only). **Deleted
+  with this pass:** `do_morph_grid`, `do_morph_at`, `render_fixed`, `_label_frame`, `MORPH_VIEW`/`MORPH_RES`, and
+  the now-unused `from PIL import Image, ImageDraw` + `from trellis.utils import render_utils` imports. The
+  library-level union/dissolve `SlatMorpher` is unchanged (Phase-4 module). **Preview caveat (unchanged):** the
+  on-asset region preview decodes the source on the GPU once per new source (cached in `_PREVIEW_GS` after) — if
+  it drags in-browser, switch to a no-decode `.ply`-tint path.
+- **2026-06-14 (3rd UI pass — user follow-ups), supersedes the relevant 2nd-pass points:** (a) **progress
+  spinner restored** — `show_progress` is `"full"` on every heavy op (Generate/Restyle/Edit/Inpaint/Morph-build/
+  Bridge + both preset previews); only the two *instant* swaps (`m_frame` scrub, `i_toggle`) are `"hidden"`.
+  `"minimal"` had shown a **static icon**, not the animation — the user's complaint. (b) the **Region/Hole picker
+  moved out of the middle into the left inputs column**; middle is now just the on-asset preview. (c) **Presets
+  fixed to TRELLIS's +Z-up frame:** TRELLIS authors assets **+Z up** (orbit cameras use `up=[0,0,1]`,
+  `render_utils.py:33`), so the asset's vertical axis is **Z, not Y**. Edit's `BBOX_PRESETS`/`apply_preset` now
+  slice **top/bottom = Z**, front/back = Y, left/right = X, with axis-tagged labels (`TOP_HALF="top half (up /
+  +Z)"` …). The old "top half (Y)" carved a *side* — the user's "方向不對". (d) **Inpaint carves SMALL local
+  holes now** — separate `HOLE_PRESETS`/`apply_hole_preset`: `top dent (lid center)` / `front gap (face center)`
+  / `right-side gap` / `top-front-right corner chunk`, each a sub-box ~⅓ of the asset per axis (3–5% of bbox).
+  **Root cause of "inpaint 還是怪怪的" (diagnosed by a headless GPU repro + renders):** the old half-presets carved
+  **~56%** of the asset (top-half = 21407/38341 vox), so the SS flow **hallucinated a whole new chunk that did
+  not match the survivors** — a *barrel* where the lid was. A small hole (≈1300–2500 vox) regrows **cleanly**
+  (verified end-to-end: `top dent` → intact chest). The **inpaint pipeline itself was never broken** (survivors
+  bit-exact, the Z-up carve lands correctly). Edit keeps the half-presets — it only re-textures a *fixed*
+  structure (no regrowth), so big regions are fine. (e) **Morph grid + "Render at t" replaced by a discrete
+  Frame-slider scrubber** (see the Morph bullet). **NB: Gradio does not hot-reload** — restart
+  `bash scripts/run_app.sh` to pick up any of these edits.
+- **Deps:** needs **gradio>=5** (TRELLIS pins 4.44.1 which imports the removed
+  `huggingface_hub.HfFolder`; env has hub 1.19 → installed **gradio 5.50.0**). `trimesh` is **no longer
+  imported by `app.py`** (the cube preview that used it is gone).
+- **Verified headless (2026-06-14, 3rd pass):** the full UI builds (gradio 5.50.0, `demo` = Blocks, all six
+  tabs); `show_progress` is 8×`"full"` + 2×`"hidden"`; `apply_preset` asserts the **Z-up** mapping (top/bottom
+  slice Z, front/back Y, left/right X) and `HOLE_PRESETS` boxes are small (3–5% of bbox). The **inpaint
+  diagnosis ran on a real GPU** (a chest generated on the free GPU 0 — the app holds GPU 1): a top-half carve =
+  21407/38341 vox → regrew a mismatched **barrel** (rendered), while a small hole (1336–2484 vox) regrew an
+  **intact chest** (rendered) — the evidence behind the small-hole fix. Earlier (2nd-pass) checks still hold:
+  `region_tinted_ply` writes a valid tinted `.ply`, `_PREVIEW_GS` re-tints with **0 re-decodes**, the sentinel/
+  toggle/guard branches return correctly. **NOT verifiable headless:** the in-browser splat render, the spinner
+  animation, tint readability, the Morph-slider smoothness, and the carved↔inpainted toggle — confirm in
+  browser. (NB: vendored `Gaussian.load_ply` has a **pre-existing** `transform`-branch bug — refs `rotation`
+  before assignment — but the app never hits it; the browser renders `.ply` directly. Do **not** fix it —
+  submodule is immutable.)
+
+> Two pre-feature fixes are folded into the same uncommitted `app.py`/`run_app.sh` diff:
+> (a) `run_app.sh` `GRADIO_TEMP_DIR` perm fix + "run with `bash`"; (b) Generate/Bridge `.click`
+> used to bind a `gr.update(choices=…)` onto their *Textbox* save field → `Textbox got an
+> unexpected keyword argument 'choices'` at runtime — fixed so both return `(ply, msg)` and
+> refresh dropdowns via `gen_evt`/`bridge_evt.then(_refresh_all)`.
+
 ## Environment — how to run (CRITICAL)
 conda env lives at `/home/cookies/miniconda3/envs/trellis` (torch 2.4.0 + cu118).
 ```bash
@@ -233,7 +342,10 @@ decoder head):
   hole boundary; expose `carve_hole` + a non-bbox (arbitrary voxel-mask) hole; complete a *real*
   partial scan brought in via the Phase-2 bridge.
 - **Phase 4 morphing UPGRADE (MorphAny3D)** — still PAUSED (see below), the highest-value next step
-  if the goal is true shape-warp morphing.
+  if the goal is true shape-warp morphing. NOTE: the **app's Morph tab** now ships a *different,
+  simpler* thing — a fixed-structure **appearance** morph (source + target prompt → restyle aligns the
+  coords → latent lerp; see the Gradio-app section). That is appearance-only on one geometry; the
+  MorphAny3D upgrade below is the separate, still-unbuilt shape-warp path.
 
 Phase 4 morphing UPGRADE — reference = **MorphAny3D (CVPR 2026, arXiv 2601.00204)**, the real
 SLAT/TRELLIS-native morphing paper (project: https://xiaokunsun.github.io/MorphAny3D.github.io/).
