@@ -1,50 +1,40 @@
 # SLAT-Studio
 
-Downstream 3D tasks built on top of [Microsoft TRELLIS](https://github.com/microsoft/TRELLIS)
-and its **Structured LATent (SLAT)** representation.
+![SLAT-Studio teaser](project-page/static/images/teaser.png)
 
-Where TRELLIS does text/image → 3D, SLAT-Studio takes an **existing 3D asset (3DGS / mesh)
-+ a text prompt** and performs:
+Downstream 3D tasks built on [Microsoft TRELLIS](https://github.com/microsoft/TRELLIS) and its
+**Structured LATent (SLAT)** representation.
 
-- **3D Editing** — region / local edits (RePaint-style masked SLAT sampling)
-- **Style Transfer / Material Alteration** — restyle appearance while preserving geometry
-- **Interpolation & Morphing** — blend two assets in SLAT space
-
-TRELLIS is vendored **unmodified** as a git submodule under `third_party/TRELLIS`; all new
-logic lives in the `slat_studio` package and only *imports* `trellis.*`. We never edit the
-submodule — custom sampling is done by subclassing TRELLIS classes.
-
-## Status
-
-Phase 0 — scaffolding & environment bring-up. See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)
-and the design plan for the roadmap.
-
-## Layout
-
-```
-third_party/TRELLIS/   # git submodule, UNMODIFIED (pinned commit)
-slat_studio/
-  bridge/    # external 3DGS/mesh -> SLAT (render -> DINOv2 -> voxelize -> VAE encode)
-  editing/   # region edit (RePaint sampler subclass), detail variation
-  style/     # text-conditioned restyle / appearance & material
-  morph/     # SLAT structure alignment + interpolation
-  io/        # load/save SLAT (.npz), 3DGS (.ply), mesh; GLB/OBJ export
-  pipelines/ # high-level user-facing entry points
-  samplers/  # custom flow samplers (subclass trellis samplers; no core edits)
-examples/    # runnable demos per task
-configs/
-```
+Where TRELLIS goes text/image → 3D, SLAT-Studio takes an **existing 3D asset + a text prompt** and
+edits it in SLAT space — generate, restyle, region-edit, morph, and inpaint. TRELLIS is vendored
+**unmodified** as a submodule under `third_party/TRELLIS`; all new logic lives in `slat_studio` and
+only *imports* `trellis.*` (custom sampling is done by subclassing).
 
 ## Setup
 
-See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). In short:
+We reuse TRELLIS's CUDA environment. Build it once into a conda env named `trellis`, matching
+`CUDA_HOME` to the env's pinned `pytorch-cuda=11.8`:
 
 ```bash
-git clone --recurse-submodules <this-repo>
-cd slat-studio
-# build the TRELLIS env (CUDA extensions):
-cd third_party/TRELLIS && . ./setup.sh --new-env --basic --xformers --flash-attn \
+git clone --recurse-submodules git@github.com:Sytwu/SLAT-Studio.git && cd SLAT-Studio
+export CUDA_HOME=/usr/local/cuda-11.8
+export PATH="$CUDA_HOME/bin:$PATH"
+cd third_party/TRELLIS
+. ./setup.sh --new-env --basic --xformers --flash-attn \
     --diffoctreerast --spconv --mipgaussian --kaolin --nvdiffrast
 ```
 
-Requires Linux + NVIDIA GPU (16GB+ VRAM), CUDA toolkit, and conda.
+Requires Linux + an NVIDIA GPU (16 GB+ VRAM), a CUDA toolkit, and conda. See
+[docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) for the verified host config and known gotchas.
+
+## Run the Gradio app
+
+The script sets `PYTHONPATH`/CUDA env and launches all tabs (Generate, Restyle, Edit, Morph,
+Inpaint, Bridge) on [http://localhost:7860](http://localhost:7860):
+
+```bash
+bash scripts/run_app.sh
+```
+
+The pipeline loads lazily on first use, so the UI comes up immediately. Gradio does **not**
+hot-reload — restart the script to pick up code edits.
